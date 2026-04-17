@@ -1,0 +1,2 @@
+# No special config needed — UART0 is initialized by the ROM bootloader
+# at 115200 baud 8N1, which we inherit.
