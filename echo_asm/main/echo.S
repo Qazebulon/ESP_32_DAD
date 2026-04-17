@@ -5,17 +5,20 @@
 #   The ROM bootloader initializes UART0 to 115200 baud, 8N1.
 #   We inherit that configuration — no UART init needed.
 #
-# Behavior: waits for a byte on UART0 RX, echoes it back on UART0 TX.
+# Behavior: waits for a byte on UART0 RX, converts ASCII lowercase
+# letters to uppercase (a–z → A–Z), and echoes the result on UART0 TX.
+# Non-letter bytes pass through unchanged.
 #
 # UART0 registers (ESP32 Technical Reference Manual, Chapter 13):
 #   0x3FF40000  UART_FIFO_REG     — read = RX FIFO, write = TX FIFO
-#   0x3FF40024  UART_STATUS_REG   — bits 7:0  = RXFIFO_CNT (bytes waiting)
+#   0x3FF4001C  UART_STATUS_REG   — bits 7:0  = RXFIFO_CNT (bytes waiting)
 #                                   bits 23:16 = TXFIFO_CNT (bytes queued)
 #
 # Register usage:
 #   a2 — register address (scratch)
 #   a3 — status / FIFO count (scratch)
 #   a4 — the byte being echoed
+#   a5 — comparison constant for the uppercase conversion
 
     .text
     .align  4
@@ -27,7 +30,7 @@ app_main:
 
 echo_loop:
     # ── Wait for a byte in the RX FIFO ──────────────────────────────────
-    movi    a2, 0x3FF40024          # UART_STATUS_REG
+    movi    a2, 0x3FF4001C          # UART_STATUS_REG
     l32i    a3, a2, 0               # read status
     extui   a3, a3, 0, 8           # extract bits 7:0 = RXFIFO_CNT
     beqz    a3, echo_loop           # spin until at least one byte arrives
@@ -36,9 +39,16 @@ echo_loop:
     movi    a2, 0x3FF40000          # UART_FIFO_REG
     l32i    a4, a2, 0               # read byte from RX FIFO into a4
 
+    # ── Uppercase ASCII lowercase letters (a–z → A–Z) ───────────────────
+    movi    a5, 'a'                 # 0x61
+    bltu    a4, a5, tx_wait         # byte < 'a' → leave unchanged
+    movi    a5, 'z'+1               # 0x7B
+    bgeu    a4, a5, tx_wait         # byte > 'z' → leave unchanged
+    addi    a4, a4, -0x20           # subtract 0x20 to uppercase
+
 tx_wait:
     # ── Wait for space in the TX FIFO ───────────────────────────────────
-    movi    a2, 0x3FF40024          # UART_STATUS_REG
+    movi    a2, 0x3FF4001C          # UART_STATUS_REG
     l32i    a3, a2, 0               # read status
     extui   a3, a3, 16, 8          # extract bits 23:16 = TXFIFO_CNT
     bgeui   a3, 128, tx_wait        # spin if TX FIFO is full (128 entries)

@@ -1,2 +1,8 @@
-# No special config needed — UART0 is initialized by the ROM bootloader
-# at 115200 baud 8N1, which we inherit.
+# UART0 is initialized by the ROM bootloader at 115200 baud 8N1,
+# which we inherit — no UART init needed.
+
+# Disable the task watchdog. Our asm echo loop holds CPU0 forever
+# without yielding, which starves IDLE0 and trips the WDT after 5s.
+# For a bare-metal polling demo this is fine; the WDT exists to catch
+# hung RTOS tasks, which is not the scenario here.
+CONFIG_ESP_TASK_WDT_INIT=n
